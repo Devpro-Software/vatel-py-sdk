@@ -12,7 +12,7 @@ from vatel.models.ws import (
     parse_server_message,
 )
 
-DEFAULT_WS_BASE = "wss://staging.api.vatel.ai"
+DEFAULT_WS_BASE = "wss://api.vatel.ai"
 CONNECTION_PATH = "/v1/connection"
 
 

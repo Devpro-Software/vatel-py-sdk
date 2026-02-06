@@ -2,8 +2,8 @@ from typing import Optional
 
 import httpx
 
-DEFAULT_BASE_URL = "https://staging.api.vatel.ai"
-DEFAULT_WS_URL = "wss://staging.api.vatel.ai"
+DEFAULT_BASE_URL = "https://api.vatel.ai"
+DEFAULT_WS_URL = "wss://api.vatel.ai"
 
 
 class BaseAPI:

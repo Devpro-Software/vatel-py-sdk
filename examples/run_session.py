@@ -77,7 +77,7 @@ def make_player():
 
 
 async def run(api_key: str, agent_id: str, base_url: str | None) -> None:
-    base_url = base_url or "https://staging.api.vatel.ai"
+    base_url = base_url or "https://api.vatel.ai"
     client = Client(api_key=api_key, base_url=base_url)
     audio_q, playback = make_player()
     try:

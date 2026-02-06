@@ -5,7 +5,7 @@ Use the Call Agent Builder REST and WebSocket APIs from Python.
 ## Install
 
 ```bash
-pip install vatel
+pip install git+https://github.com/Devpro-Software/vatel-py-sdk.git
 ```
 
 Requires Python 3.9+.
@@ -20,10 +20,10 @@ from vatel import Client
 client = Client(api_key="your-organization-api-key")
 ```
 
-To use a different host (e.g. staging):
+To use a different host:
 
 ```python
-client = Client(api_key="your-api-key", base_url="https://staging.api.vatel.ai")
+client = Client(api_key="your-api-key", base_url="https://api.vatel.ai")
 ```
 
 ## REST API
