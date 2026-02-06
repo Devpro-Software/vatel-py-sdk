@@ -1,0 +1,17 @@
+README.md
+pyproject.toml
+src/vatel/__init__.py
+src/vatel/client.py
+src/vatel/connection.py
+src/vatel.egg-info/PKG-INFO
+src/vatel.egg-info/SOURCES.txt
+src/vatel.egg-info/dependency_links.txt
+src/vatel.egg-info/requires.txt
+src/vatel.egg-info/top_level.txt
+src/vatel/api/__init__.py
+src/vatel/api/agents.py
+src/vatel/api/base.py
+src/vatel/api/session.py
+src/vatel/models/__init__.py
+src/vatel/models/rest.py
+src/vatel/models/ws.py

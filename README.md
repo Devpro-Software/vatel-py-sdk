@@ -1,0 +1,98 @@
+# Vatel Python SDK
+
+Python SDK for the Call Agent Builder REST and WebSocket APIs.
+
+## Install
+
+```bash
+pip install -e .
+```
+
+## Usage
+
+### REST API (session token, agents)
+
+Uses your organization API key (Bearer). Sync and async methods are available.
+
+```python
+from vatel import Client
+
+client = Client(api_key="your-api-key")
+
+# Optional: override base URL
+# client = Client(api_key="...", base_url="https://custom.api.example.com")
+
+# Session token (for WebSocket auth)
+resp = client.session.generate_token(agent_id="agent-uuid")
+token = resp.token
+
+# List agents
+agents = client.agents.list()
+for a in agents:
+    print(a.id, a.name)
+
+client.close()
+```
+
+Async:
+
+```python
+import asyncio
+from vatel import Client
+
+async def main():
+    client = Client(api_key="your-api-key")
+    token_resp = await client.session.generate_token_async("agent-uuid")
+    agents = await client.agents.list_async()
+    await client.aclose()
+
+asyncio.run(main())
+```
+
+### WebSocket connection
+
+Connect with a session token (from `session.generate_token`). The connection is async-only.
+
+```python
+import asyncio
+from vatel import Client
+from vatel.models.ws import parse_server_message
+
+async def main():
+    client = Client(api_key="your-api-key")
+    resp = await client.session.generate_token_async(agent_id="agent-uuid")
+    conn = await client.connect(token=resp.token)
+
+    async for msg in conn.stream_messages():
+        if hasattr(msg, "type"):
+            if msg.type == "session_started":
+                print("Session started", msg.data.id)
+            elif msg.type == "response_audio":
+                # msg.data.audio is base64 PCM 16 24000Hz mono
+                pass
+            elif msg.type == "session_ended":
+                break
+
+    await conn.close()
+    await client.aclose()
+
+asyncio.run(main())
+```
+
+Sending input audio:
+
+```python
+await conn.send_input_audio(audio_base64="...")
+```
+
+Sending tool call output (after receiving a `tool_call` message):
+
+```python
+await conn.send_tool_call_output(tool_call_id="...", output="...")
+```
+
+### Scalability
+
+- **REST**: Add new API modules under `vatel/api/` (e.g. `calls.py`, `recordings.py`), each with a class that takes `BaseAPI` and uses `self._base._get_client()` / `self._base._get_async_client()`. Register them on `Client` (e.g. `client.calls`, `client.recordings`).
+- **Models**: Add Pydantic models in `vatel/models/rest.py` (or a new file) and reference them in the new API class.
+- **WebSocket**: New message types go in `vatel/models/ws.py`: add the payload model and extend the `ServerMessage` union and `parse_server_message()`. New client payloads get a `send_*` method on `Connection` if needed.
