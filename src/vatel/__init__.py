@@ -1,5 +1,19 @@
 from vatel.client import Client
-from vatel.models.rest import Agent, SessionTokenResponse
+from vatel.models.rest import (
+    Agent,
+    AgentCreateInput,
+    AgentUpdateInput,
+    DialAgentResponse,
+    GraphVersion,
+    GraphVersionDetail,
+    LLMStringsResponse,
+    Organization,
+    SessionTokenResponse,
+    SipTrunk,
+    SipTrunkAgentAssignment,
+    TwilioPhoneNumber,
+    VoicesListResponse,
+)
 from vatel.models.ws import (
     InputAudio,
     Interruption,
@@ -19,7 +33,18 @@ from vatel.models.ws import (
 __all__ = [
     "Client",
     "Agent",
+    "AgentCreateInput",
+    "AgentUpdateInput",
+    "DialAgentResponse",
+    "GraphVersion",
+    "GraphVersionDetail",
+    "LLMStringsResponse",
+    "Organization",
     "SessionTokenResponse",
+    "SipTrunk",
+    "SipTrunkAgentAssignment",
+    "TwilioPhoneNumber",
+    "VoicesListResponse",
     "ServerMessage",
     "SessionStarted",
     "ResponseAudio",

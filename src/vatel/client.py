@@ -4,7 +4,12 @@ import httpx
 
 from vatel.api.agents import AgentsAPI
 from vatel.api.base import BaseAPI, DEFAULT_BASE_URL
+from vatel.api.llms import LLMsAPI
+from vatel.api.organization import OrganizationAPI
 from vatel.api.session import SessionAPI
+from vatel.api.sip_trunks import SipTrunksAPI
+from vatel.api.twilio_numbers import TwilioNumbersAPI
+from vatel.api.voices import VoicesAPI
 from vatel.connection import Connection, connect as ws_connect
 
 
@@ -22,8 +27,13 @@ class Client:
             http_client=http_client,
             async_http_client=async_http_client,
         )
-        self.session = SessionAPI(self._api)
+        self.organization = OrganizationAPI(self._api)
+        self.llms = LLMsAPI(self._api)
+        self.voices = VoicesAPI(self._api)
         self.agents = AgentsAPI(self._api)
+        self.twilio_numbers = TwilioNumbersAPI(self._api)
+        self.sip_trunks = SipTrunksAPI(self._api)
+        self.session = SessionAPI(self._api)
 
     def close(self) -> None:
         self._api.close()
