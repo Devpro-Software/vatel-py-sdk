@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -259,8 +259,16 @@ class SipTrunkAgentAssignmentPatchInput(BaseModel):
     alternate_number: Optional[str] = None
 
 
+class GenerateSessionTokenRequest(BaseModel):
+    agent_id: str
+    transport: Optional[Literal["websocket", "webrtc"]] = None
+
+
 class SessionTokenResponse(BaseModel):
-    token: str = Field(..., description="Short-lived JWT for session/embed auth")
+    token: str
+    room: Optional[str] = None
+    identity: Optional[str] = None
+    url: Optional[str] = None
 
 
 class ErrorResponse(BaseModel):
