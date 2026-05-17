@@ -126,8 +126,17 @@ ServerMessage = Union[
     ToolCall,
 ]
 
+_EMPTY_DATA_TYPES = frozenset({"speech_stopped", "session_ended", "interruption"})
+
+
+def _normalize_server_message(raw: dict[str, Any]) -> dict[str, Any]:
+    if raw.get("type") in _EMPTY_DATA_TYPES and raw.get("data") is None:
+        return {**raw, "data": {}}
+    return raw
+
 
 def parse_server_message(raw: dict[str, Any]) -> ServerMessage:
+    raw = _normalize_server_message(raw)
     t = raw.get("type")
     if t == "session_started":
         return SessionStarted.model_validate(raw)

@@ -5,7 +5,7 @@ Use the Call Agent Builder REST and WebSocket APIs from Python.
 ## Install
 
 ```bash
-pip install "git+https://github.com/Devpro-Software/vatel-py-sdk.git@v0.4.0"
+pip install "git+https://github.com/Devpro-Software/vatel-py-sdk.git@v0.4.1"
 ```
 
 Requires Python 3.9+.
