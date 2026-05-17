@@ -1,5 +1,6 @@
 import json
 from typing import Any, AsyncIterator, Optional
+from urllib.parse import urlencode
 
 import websockets
 
@@ -53,14 +54,30 @@ class Connection:
         await self._ws.close()
 
 
+def connection_query(
+    token: str,
+    agent_id: str,
+    *,
+    version_id: Optional[str] = None,
+) -> str:
+    params: dict[str, str] = {"token": token, "agentId": agent_id}
+    if version_id is not None:
+        params["versionId"] = version_id
+    return urlencode(params)
+
+
 async def connect(
     token: str,
+    agent_id: str,
+    *,
+    version_id: Optional[str] = None,
     url: Optional[str] = None,
     path: Optional[str] = None,
 ) -> Connection:
     base = (url or DEFAULT_WS_BASE).rstrip("/").replace("https://", "wss://").replace("http://", "ws://")
     pathname = path or CONNECTION_PATH
-    uri = f"{base}{pathname}?token={token}"
+    query = connection_query(token, agent_id, version_id=version_id)
+    uri = f"{base}{pathname}?{query}"
     ws = await websockets.connect(
         uri,
         close_timeout=5,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Literal, Optional
+from typing import Any, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,6 +23,35 @@ class TTSStrategy(str, Enum):
 class TimeoutAction(str, Enum):
     END_CALL = "end_call"
     TRANSFER_CALL = "transfer_call"
+
+
+class CallerTransformType(str, Enum):
+    ADD_PREFIX = "add_prefix"
+    ADD_SUFFIX = "add_suffix"
+    REPLACE = "replace"
+    STRIP_DIGITS_END = "strip_digits_end"
+    STRIP_DIGITS_START = "strip_digits_start"
+
+
+class SIPTrunkAuthType(str, Enum):
+    DIGEST = "digest"
+    ACL = "acl"
+    NONE = "none"
+
+
+class RegistrationStatus(str, Enum):
+    NOT_REGISTERED = "not_registered"
+    PENDING = "pending"
+    REGISTERED = "registered"
+    FAILED = "failed"
+    AUTH_FAILED = "auth_failed"
+
+
+class PbxType(str, Enum):
+    THREE_CX = "3cx"
+    YEASTAR = "yeastar"
+    WEBEX = "webex"
+    GENERIC = "generic"
 
 
 class VoiceSettings(BaseModel):
@@ -67,7 +96,6 @@ class Agent(BaseModel):
     first_message_interruption_time: Optional[float] = None
     default_language: Optional[str] = None
     summarize_calls: Optional[bool] = None
-    tts_strategy: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     noise_cancel_settings: Optional[NoiseCancelSettings] = None
@@ -183,7 +211,7 @@ class TwilioPhoneNumberLabelPatchInput(BaseModel):
 
 
 class SipTrunkCallerIDTransform(BaseModel):
-    type: str
+    type: Union[CallerTransformType, str]
     value: Optional[str] = None
     value2: Optional[str] = None
     number: Optional[int] = None
@@ -261,7 +289,12 @@ class SipTrunkAgentAssignmentPatchInput(BaseModel):
 
 class GenerateSessionTokenRequest(BaseModel):
     agent_id: str
+    version_id: Optional[str] = None
+    chat_id: Optional[str] = None
     transport: Optional[Literal["websocket", "webrtc"]] = None
+    first_message: Optional[str] = None
+    prompt: Optional[str] = None
+    chat: Optional[bool] = None
 
 
 class SessionTokenResponse(BaseModel):
@@ -269,6 +302,114 @@ class SessionTokenResponse(BaseModel):
     room: Optional[str] = None
     identity: Optional[str] = None
     url: Optional[str] = None
+    webrtc_token: Optional[str] = None
+
+
+class CallStatus(str, Enum):
+    CONNECTED = "connected"
+    STARTED = "started"
+    IN_PROGRESS = "in_progress"
+    AUTH_FAILED = "auth_failed"
+    ENDED = "ended"
+
+
+class CallSource(str, Enum):
+    TWILIO = "twilio"
+    SIP = "sip"
+    SIMULATION = "simulation"
+    API = "api"
+
+
+class CallOutcome(str, Enum):
+    TRANSFERRED = "transferred"
+    ENDED_BY_AGENT = "ended_by_agent"
+    ENDED_BY_USER = "ended_by_user"
+
+
+class ContextVariable(BaseModel):
+    name: Optional[str] = None
+    type: Optional[Literal["system", "input", "extracted"]] = None
+    description: Optional[str] = None
+    value: Optional[Any] = None
+    dataType: Optional[Literal["string", "number", "boolean", "object", "array"]] = None
+    rationale: Optional[str] = None
+
+
+class TranscriptEntryType(str, Enum):
+    MESSAGE = "message"
+    TOOL_CALL = "tool_call"
+    TOOL_CALL_OUTPUT = "tool_call_output"
+    INTERRUPTION = "interruption"
+
+
+class TranscriptToolCall(BaseModel):
+    itemId: Optional[str] = None
+    callId: Optional[str] = None
+    toolName: Optional[str] = None
+    arguments: Optional[str] = None
+    output: Optional[str] = None
+    startedAt: Optional[str] = None
+    endedAt: Optional[str] = None
+
+
+class TranscriptEntry(BaseModel):
+    index: Optional[int] = None
+    role: Optional[str] = None
+    message: Optional[str] = None
+    type: Optional[str] = None
+    toolCall: Optional[TranscriptToolCall] = None
+    toolCallOutput: Optional[str] = None
+    createdAt: Optional[str] = None
+    durationMs: Optional[int] = None
+    turnId: Optional[str] = None
+
+
+class Transcript(BaseModel):
+    entries: list[TranscriptEntry]
+
+
+class CallFeedback(BaseModel):
+    stars: int
+    notes: str
+
+
+class Call(BaseModel):
+    id: Optional[str] = None
+    agent_id: Optional[str] = None
+    graph_version_id: Optional[str] = None
+    organization_id: Optional[str] = None
+    party_number: Optional[str] = None
+    status: Optional[str] = None
+    source: Optional[str] = None
+    termination_reason: Optional[str] = None
+    extracted_variables: Optional[list[ContextVariable]] = None
+    outbound: Optional[bool] = None
+    outbound_contact_id: Optional[str] = None
+    outbound_list_run_id: Optional[str] = None
+    created_at: Optional[str] = None
+    connected_at: Optional[str] = None
+    started_at: Optional[str] = None
+    ended_at: Optional[str] = None
+    summary: Optional[str] = None
+    transcript: Optional[Transcript] = None
+    cost: Optional[float] = None
+    tags: Optional[list[str]] = None
+    duration_seconds: Optional[int] = None
+    feedback: Optional[CallFeedback] = None
+
+
+class PaginationInfo(BaseModel):
+    page: int
+    page_size: int
+    total: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
+
+
+class PaginatedCallsResponse(BaseModel):
+    calls: list[Call]
+    pagination: PaginationInfo
 
 
 class ErrorResponse(BaseModel):

@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class VoiceSessionEmptyData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
 class ToolCallArgument(BaseModel):
@@ -26,6 +30,7 @@ class SessionStarted(BaseModel):
 class ResponseAudioData(BaseModel):
     turn_id: str
     audio: str = Field(..., description="Base64-encoded audio in PCM 16 24000Hz mono")
+    is_final: bool
 
 
 class ResponseAudio(BaseModel):
@@ -36,6 +41,7 @@ class ResponseAudio(BaseModel):
 class ResponseTextData(BaseModel):
     turn_id: str
     text: str
+    is_final: bool
 
 
 class ResponseText(BaseModel):
@@ -45,6 +51,8 @@ class ResponseText(BaseModel):
 
 class InputAudioTranscriptData(BaseModel):
     transcript: str
+    turn_id: Optional[str] = None
+    is_final: bool
 
 
 class InputAudioTranscript(BaseModel):
@@ -58,20 +66,22 @@ class SpeechStartedData(BaseModel):
 
 class SpeechStarted(BaseModel):
     type: Literal["speech_started"] = "speech_started"
-    data: Optional[SpeechStartedData] = None
+    data: SpeechStartedData
 
 
 class SpeechStopped(BaseModel):
     type: Literal["speech_stopped"] = "speech_stopped"
+    data: VoiceSessionEmptyData = Field(default_factory=VoiceSessionEmptyData)
 
 
 class SessionEnded(BaseModel):
     type: Literal["session_ended"] = "session_ended"
-    data: Optional[dict[str, Any]] = None
+    data: VoiceSessionEmptyData = Field(default_factory=VoiceSessionEmptyData)
 
 
 class Interruption(BaseModel):
     type: Literal["interruption"] = "interruption"
+    data: VoiceSessionEmptyData = Field(default_factory=VoiceSessionEmptyData)
 
 
 class ToolCallData(BaseModel):

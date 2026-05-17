@@ -60,8 +60,9 @@ from vatel.models.ws import ToolCall
 
 async def main():
     client = Client(api_key="your-api-key")
-    token = (await client.session.generate_token_async(agent_id="agent-uuid")).token
-    conn = await client.connect(token=token)
+    agent_id = "agent-uuid"
+    token = (await client.session.generate_token_async(agent_id=agent_id)).token
+    conn = await client.connect(token=token, agent_id=agent_id)
 
     async for msg in conn.stream_messages():
         if getattr(msg, "type", None) == "session_started":
@@ -106,9 +107,9 @@ await conn.send_tool_call_output(tool_call_id=msg.data.toolCallId, output="resul
 |--------------------------|--------------------------------------|
 | `session_started`        | Call started; `data.id` is session ID |
 | `session_ended`          | Call ended                            |
-| `response_audio`         | Agent TTS chunk; `data.audio` base64, `data.turn_id` |
-| `response_text`          | Agent text for the turn              |
-| `input_audio_transcript` | Your speech (STT)                    |
+| `response_audio`         | Agent TTS chunk; `data.audio` base64, `data.turn_id`, `data.is_final` |
+| `response_text`          | Agent text; `data.is_final` when committed for the turn |
+| `input_audio_transcript` | Your speech (STT); `data.is_final` for final transcript |
 | `speech_started` / `speech_stopped` | VAD events       |
 | `interruption`           | You interrupted the agent            |
 | `tool_call`              | Server requests a tool; reply with `send_tool_call_output` |

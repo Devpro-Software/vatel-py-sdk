@@ -14,10 +14,23 @@ class SessionAPI:
         self,
         agent_id: str,
         *,
+        version_id: Optional[str] = None,
+        chat_id: Optional[str] = None,
         transport: Optional[Literal["websocket", "webrtc"]] = None,
+        first_message: Optional[str] = None,
+        prompt: Optional[str] = None,
+        chat: Optional[bool] = None,
     ) -> SessionTokenResponse:
         client = self._base._get_client()
-        body = GenerateSessionTokenRequest(agent_id=agent_id, transport=transport)
+        body = self._token_body(
+            agent_id=agent_id,
+            version_id=version_id,
+            chat_id=chat_id,
+            transport=transport,
+            first_message=first_message,
+            prompt=prompt,
+            chat=chat,
+        )
         r = client.post(
             "/v1/session-token",
             json=body.model_dump(mode="json", exclude_unset=True),
@@ -29,13 +42,47 @@ class SessionAPI:
         self,
         agent_id: str,
         *,
+        version_id: Optional[str] = None,
+        chat_id: Optional[str] = None,
         transport: Optional[Literal["websocket", "webrtc"]] = None,
+        first_message: Optional[str] = None,
+        prompt: Optional[str] = None,
+        chat: Optional[bool] = None,
     ) -> SessionTokenResponse:
         client = self._base._get_async_client()
-        body = GenerateSessionTokenRequest(agent_id=agent_id, transport=transport)
+        body = self._token_body(
+            agent_id=agent_id,
+            version_id=version_id,
+            chat_id=chat_id,
+            transport=transport,
+            first_message=first_message,
+            prompt=prompt,
+            chat=chat,
+        )
         r = await client.post(
             "/v1/session-token",
             json=body.model_dump(mode="json", exclude_unset=True),
         )
         r.raise_for_status()
         return SessionTokenResponse.model_validate(r.json())
+
+    @staticmethod
+    def _token_body(
+        *,
+        agent_id: str,
+        version_id: Optional[str],
+        chat_id: Optional[str],
+        transport: Optional[Literal["websocket", "webrtc"]],
+        first_message: Optional[str],
+        prompt: Optional[str],
+        chat: Optional[bool],
+    ) -> GenerateSessionTokenRequest:
+        return GenerateSessionTokenRequest(
+            agent_id=agent_id,
+            version_id=version_id,
+            chat_id=chat_id,
+            transport=transport,
+            first_message=first_message,
+            prompt=prompt,
+            chat=chat,
+        )

@@ -3,7 +3,7 @@
   "info": {
     "title": "Vatel AI REST API",
     "description": "Programmatic access for agents, telephony, and session tokens. Send `Authorization: Bearer <organization API key>` on all requests unless noted. Most error responses return JSON with an `error` string message.",
-    "version": "0.2.1"
+    "version": "0.2.3"
   },
   "servers": [
     {
@@ -18,7 +18,8 @@
     { "name": "agents", "description": "Agents, outbound dial, agent versions" },
     { "name": "twilio", "description": "Imported Twilio phone numbers" },
     { "name": "sip-trunks", "description": "SIP trunk configuration" },
-    { "name": "session", "description": "Short-lived session tokens" }
+    { "name": "session", "description": "Short-lived session tokens and the API voice WebSocket (`GET /v1/connection`) opened with those credentials." },
+    { "name": "calls", "description": "Call history and recordings for your organization" }
   ],
   "security": [{ "bearerAuth": [] }],
   "paths": {
@@ -471,8 +472,8 @@
     "/v1/agents/{id}/dial": {
       "post": {
         "tags": ["agents"],
-        "summary": "Dial outbound via Twilio",
-        "description": "Places an outbound call from the agent's assigned number. The agent must be active and have a phone number configured.",
+        "summary": "Dial outbound (Twilio or SIP trunk)",
+        "description": "Places an outbound call. Without `sipTrunkId`, uses the agent's assigned Twilio number and requires the agent to be active with a phone number. With `sipTrunkId`, dials via the assigned SIP outbound trunk (async); `number` or `destination` is then required. `number` and `destination` are aliases for the callee; send one or both with the same value.",
         "operationId": "dialAgent",
         "parameters": [
           {
@@ -485,14 +486,49 @@
           {
             "name": "number",
             "in": "query",
-            "required": true,
-            "description": "Destination number in E.164 or similar format expected by your carrier.",
+            "required": false,
+            "description": "Callee to dial (alias of `destination`). Required for a successful dial unless you rely solely on `destination`. Must match `destination` if both are sent.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "destination",
+            "in": "query",
+            "required": false,
+            "description": "Callee to dial (alias of `number`). Required for a successful dial unless you rely solely on `number`. Must match `number` if both are sent.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "sipTrunkId",
+            "in": "query",
+            "required": false,
+            "description": "UUID of a SIP trunk assigned to this agent. When set, outbound uses the SIP trunk path instead of Twilio.",
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "callerId",
+            "in": "query",
+            "required": false,
+            "description": "When using `sipTrunkId`, optional SIP From user override; defaults to the agent id.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "firstMessage",
+            "in": "query",
+            "required": false,
+            "description": "Override the agent's first message for this call.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "prompt",
+            "in": "query",
+            "required": false,
+            "description": "Override the agent's system prompt for this call.",
             "schema": { "type": "string" }
           }
         ],
         "responses": {
           "200": {
-            "description": "Call accepted by Twilio",
+            "description": "Call request accepted (Twilio) or SIP dial accepted asynchronously (trunk path).",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/DialAgentResponse" }
@@ -500,7 +536,7 @@
             }
           },
           "400": {
-            "description": "Missing number, invalid format, or agent has no phone number",
+            "description": "Missing or conflicting callee (`number`/`destination`), invalid UUIDs, invalid number length, or agent has no phone number on the Twilio path.",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ErrorResponse" }
@@ -508,7 +544,15 @@
             }
           },
           "401": {
-            "description": "Missing Bearer token or wrong organization for agent",
+            "description": "Missing Bearer token or invalid organization API key for this agent",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "403": {
+            "description": "SIP trunk not assigned to the agent, trunk organization mismatch, or related trunk access denial.",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ErrorResponse" }
@@ -516,7 +560,7 @@
             }
           },
           "404": {
-            "description": "Agent, inactive agent, or phone number record not found",
+            "description": "Agent, inactive agent, phone number record, or SIP trunk not found",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ErrorResponse" }
@@ -525,6 +569,250 @@
           },
           "500": {
             "description": "Server or telephony error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "503": {
+            "description": "Media or SIP credentials required for the trunk dial path are not configured on the server.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/calls": {
+      "get": {
+        "tags": ["calls"],
+        "summary": "List calls",
+        "description": "Paginated calls for the organization tied to your API key. Filter with optional query parameters. When using the internal server API key (`Authorization: Bearer` or `API-KEY` matching server config), you must send `organization_id` as a query parameter (UUID).",
+        "operationId": "listCalls",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "query",
+            "required": false,
+            "description": "Organization UUID. Required when the request is authenticated with the internal server API key; ignored for organization API keys.",
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Page number (1-based). Default 1.",
+            "schema": { "type": "integer", "minimum": 1, "default": 1 }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "Page size. Default 20, maximum 100.",
+            "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 }
+          },
+          {
+            "name": "agent_ids",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated agent UUIDs to restrict results.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/CallStatus" }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": { "$ref": "#/components/schemas/CallSource" }
+          },
+          {
+            "name": "date_from",
+            "in": "query",
+            "required": false,
+            "description": "Filter calls with `created_at` on or after this instant (RFC3339 or ISO8601 string accepted by the backend).",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "date_to",
+            "in": "query",
+            "required": false,
+            "description": "Filter calls with `created_at` on or before this instant.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "outbound",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["true", "false"] }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "description": "Substring match on party number (max 256 characters).",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "description": "Filter by tag (max 128 characters).",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "outcome",
+            "in": "query",
+            "required": false,
+            "description": "Filter by termination outcome / reason bucket.",
+            "schema": {
+              "type": "string",
+              "enum": ["transferred", "ended_by_agent", "ended_by_user"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated calls",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PaginatedCallsResponse" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query parameters (e.g. invalid UUIDs or filter enums)",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/calls/{id}": {
+      "get": {
+        "tags": ["calls"],
+        "summary": "Get call",
+        "description": "Returns one call by id if it belongs to an organization you can access.",
+        "operationId": "getCall",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Call id",
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Call",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Call" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid call id",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" },
+          "404": {
+            "description": "Call not found or not accessible",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/calls/{id}/recording": {
+      "get": {
+        "tags": ["calls"],
+        "summary": "Download call recording",
+        "description": "Streams the WAV recording for the call (`{id}.wav` in storage). Response body is raw audio with `Content-Disposition: attachment`. Errors are JSON.",
+        "operationId": "downloadCallRecording",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Call id",
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "WAV audio file",
+            "content": {
+              "audio/wav": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "description": "Attachment filename `{id}.wav`",
+                "schema": { "type": "string" }
+              },
+              "Content-Length": {
+                "description": "Byte length of the body",
+                "schema": { "type": "integer" }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid call id",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized" },
+          "404": {
+            "description": "Call not found, not accessible, or recording object missing",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "405": { "description": "Method not allowed" },
+          "500": {
+            "description": "Internal server error",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ErrorResponse" }
@@ -1162,7 +1450,7 @@
       "post": {
         "tags": ["session"],
         "summary": "Generate session token",
-        "description": "Issues a short-lived credential for connecting a voice session to an agent in your organization. Send `agent_id` and optional `transport`: `websocket` (default when omitted) for the platform WebSocket flow, or `webrtc` for a WebRTC media room.",
+        "description": "Short-lived session JWT in `token` to connect to an agent. For programmatic voice over WebSocket, open `GET /v1/connection` with query `token`, `agentId`, and optional `versionId` after receiving `token` here. Send `agent_id` and optional `transport`: `websocket` (default) or `webrtc` (adds `webrtc_token`, `room`, `identity`, `url`). Optional: `version_id`, `prompt`, `first_message`, and `chat` to include the `chat` scope alongside `voice` in the JWT.",
         "operationId": "generateSessionToken",
         "requestBody": {
           "required": true,
@@ -1174,14 +1462,14 @@
         },
         "responses": {
           "200": {
-            "description": "Credential payload. Always includes `token`. For `webrtc` transport, the server also returns `room`, `identity`, and `url`.",
+            "description": "Session credentials (`token`; with `webrtc`, also `webrtc_token`, `room`, `identity`, `url`).",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/SessionTokenResponse" }
               }
             }
           },
-          "400": { "description": "Invalid JSON, disallowed extra properties, missing or invalid `agent_id`, or invalid `transport`." },
+          "400": { "description": "Invalid JSON, disallowed extra properties, missing or invalid `agent_id`, invalid `version_id`, or invalid `transport`." },
           "401": { "description": "Unauthorized" },
           "403": {
             "description": "Agent belongs to another organization",
@@ -1209,6 +1497,61 @@
           },
           "503": {
             "description": "`webrtc` was requested but WebRTC media credentials or endpoint are not configured on the server.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connection": {
+      "get": {
+        "tags": ["session"],
+        "summary": "API voice session WebSocket",
+        "description": "HTTP GET upgrades to a WebSocket (RFC 6455). Use the `token` from `POST /v1/session-token` and the same agent id.\n\n**Query:** `token` (required), `agentId` (required, UUID), `versionId` (optional, UUID).\n\n**Wire format:** UTF-8 JSON objects with `type` and `data`.\n\n**Server → client** message types are documented under `VoiceSessionServerMessage` and its `oneOf` branches in components.\n\n**Client → server:** `input_audio` with base64 PCM16 audio chunks (`VoiceSessionClientInputAudioMessage`), or `tool_call_output` after a server `tool_call` (`VoiceSessionClientToolCallOutputMessage`). Sample rate matches the session (24 kHz for the API transport).",
+        "operationId": "voiceSessionWebSocket",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "description": "Session JWT from `POST /v1/session-token`.",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "agentId",
+            "in": "query",
+            "required": true,
+            "description": "Agent UUID; must match the agent encoded in the session token.",
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "versionId",
+            "in": "query",
+            "required": false,
+            "description": "Optional graph version UUID override.",
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Switching Protocols — connection becomes a WebSocket; subsequent messages are JSON as documented in `VoiceSessionServerMessage` and client message schemas."
+          },
+          "400": {
+            "description": "Missing or invalid query parameters, or token validation failed.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized or invalid session token." },
+          "403": { "description": "Agent not allowed for this organization." },
+          "404": { "description": "Agent not found." },
+          "500": {
+            "description": "Internal server error",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/ErrorResponse" }
@@ -1698,21 +2041,43 @@
             "format": "uuid",
             "description": "UUID of the agent that will run this voice session."
           },
+          "version_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional published version UUID. When omitted, the server uses the agent's resolved active version."
+          },
+          "chat_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Optional chat UUID to embed into the session token claims (`parameters.chat_id`) for downstream chat continuity."
+          },
           "transport": {
             "type": "string",
             "enum": ["websocket", "webrtc"],
             "description": "`websocket`: platform WebSocket session (default when omitted). `webrtc`: WebRTC media room; response adds `room`, `identity`, and `url`."
+          },
+          "first_message": {
+            "type": "string",
+            "description": "Optional opening line override for this session (WebSocket session token and WebRTC JWT participant attributes when applicable)."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Optional system prompt override for this session (WebSocket session parameters and WebRTC JWT participant attributes when applicable)."
+          },
+          "chat": {
+            "type": "boolean",
+            "description": "When true, the `token` includes the `chat` scope in addition to `voice`, authorizing the chat API."
           }
         }
       },
       "SessionTokenResponse": {
         "type": "object",
-        "description": "With `websocket` transport, only `token` is set. With `webrtc`, `token` is the media-room access JWT (microphone subscribe and publish; includes participant attribute `agent_id`), and `room`, `identity`, and `url` are server-assigned.",
+        "description": "Session JWT in `token`; for `webrtc`, also `webrtc_token`, `room`, `identity`, and `url`.",
         "required": ["token"],
         "properties": {
           "token": {
             "type": "string",
-            "description": "Token for the WebSocket or WebRTC client flow."
+            "description": "Platform session JWT. `scopes` claim includes `voice`, and `chat` when chat was requested. For API voice WebSocket, pass as query `token` on `GET /v1/connection` with `agentId`. Also use as `Authorization: Bearer` for the chat endpoint where applicable."
           },
           "room": {
             "type": "string",
@@ -1725,15 +2090,345 @@
           "url": {
             "type": "string",
             "description": "WebSocket URL of the media server. Present only when `transport` was `webrtc`."
+          },
+          "webrtc_token": {
+            "type": "string",
+            "description": "LiveKit media-room access JWT (microphone subscribe and publish; participant attributes include `agent_id` and, when provided, `version_id`, `prompt`, and `first_message`). Present only when `transport` was `webrtc`."
           }
         }
       },
       "DialAgentResponse": {
         "type": "object",
-        "description": "Acknowledgement that an outbound call was requested with Twilio.",
+        "description": "Acknowledgement that an outbound call was requested (Twilio) or that a SIP trunk dial was accepted to run asynchronously.",
         "required": ["success"],
         "properties": {
           "success": { "type": "boolean", "description": "True when the provider accepted the call request." }
+        }
+      },
+      "CallStatus": {
+        "type": "string",
+        "description": "Call lifecycle status.",
+        "enum": ["connected", "started", "in_progress", "auth_failed", "ended"]
+      },
+      "CallSource": {
+        "type": "string",
+        "description": "How the call entered the platform.",
+        "enum": ["twilio", "sip", "simulation", "api"]
+      },
+      "ContextVariable": {
+        "type": "object",
+        "description": "Extracted or session variable attached to a call.",
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "enum": ["system", "input", "extracted"] },
+          "description": { "type": "string" },
+          "value": { "description": "JSON value; shape depends on dataType." },
+          "dataType": { "type": "string", "enum": ["string", "number", "boolean", "object", "array"] },
+          "rationale": { "type": "string" }
+        }
+      },
+      "TranscriptEntryType": {
+        "type": "string",
+        "description": "Kind of transcript row.",
+        "enum": ["message", "tool_call", "tool_call_output", "interruption"]
+      },
+      "TranscriptToolCall": {
+        "type": "object",
+        "description": "Tool invocation metadata on a transcript row.",
+        "properties": {
+          "itemId": { "type": "string" },
+          "callId": { "type": "string" },
+          "toolName": { "type": "string" },
+          "arguments": { "type": "string", "description": "JSON string of arguments." },
+          "output": { "type": "string" },
+          "startedAt": { "type": "string", "format": "date-time" },
+          "endedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "TranscriptEntry": {
+        "type": "object",
+        "description": "One line in the call transcript (message, tool call, tool output, or interruption).",
+        "properties": {
+          "index": { "type": "integer" },
+          "role": {
+            "type": "string",
+            "description": "For message rows: user, assistant, or system. May be empty for tool or interruption rows."
+          },
+          "message": { "type": "string" },
+          "type": { "$ref": "#/components/schemas/TranscriptEntryType" },
+          "toolCall": { "$ref": "#/components/schemas/TranscriptToolCall" },
+          "toolCallOutput": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "durationMs": { "type": "integer", "format": "int64" },
+          "turnId": { "type": "string" }
+        }
+      },
+      "Transcript": {
+        "type": "object",
+        "description": "Ordered transcript for the call.",
+        "required": ["entries"],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/TranscriptEntry" }
+          }
+        }
+      },
+      "CallFeedback": {
+        "type": "object",
+        "description": "Optional post-call feedback stored as JSON.",
+        "required": ["stars", "notes"],
+        "properties": {
+          "stars": { "type": "integer" },
+          "notes": { "type": "string" }
+        }
+      },
+      "Call": {
+        "type": "object",
+        "description": "Public call record. `cost` is the customer-facing (marked-up) total; raw provider cost is not exposed.",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "agent_id": { "type": "string", "format": "uuid" },
+          "graph_version_id": { "type": "string", "format": "uuid" },
+          "organization_id": { "type": "string", "format": "uuid" },
+          "party_number": { "type": "string" },
+          "status": { "$ref": "#/components/schemas/CallStatus" },
+          "source": { "$ref": "#/components/schemas/CallSource" },
+          "termination_reason": { "type": "string" },
+          "extracted_variables": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ContextVariable" }
+          },
+          "outbound": { "type": "boolean" },
+          "outbound_contact_id": { "type": "string", "format": "uuid" },
+          "outbound_list_run_id": { "type": "string", "format": "uuid" },
+          "created_at": { "type": "string", "description": "RFC3339 timestamp" },
+          "connected_at": { "type": "string", "description": "RFC3339 timestamp when present" },
+          "started_at": { "type": "string", "description": "RFC3339 timestamp when present" },
+          "ended_at": { "type": "string", "description": "RFC3339 timestamp when present" },
+          "summary": { "type": "string" },
+          "transcript": {
+            "$ref": "#/components/schemas/Transcript",
+            "description": "Conversation transcript. Omitted when not stored for the call."
+          },
+          "cost": { "type": "number", "description": "Marked-up total cost for the call." },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "duration_seconds": {
+            "type": "integer",
+            "description": "Approximate duration from started_at to ended_at when both are set."
+          },
+          "feedback": {
+            "$ref": "#/components/schemas/CallFeedback",
+            "description": "Caller feedback; omitted when not set."
+          }
+        }
+      },
+      "PaginationInfo": {
+        "type": "object",
+        "required": ["page", "page_size", "total", "total_pages", "has_next", "has_prev"],
+        "properties": {
+          "page": { "type": "integer" },
+          "page_size": { "type": "integer" },
+          "total": { "type": "integer" },
+          "total_pages": { "type": "integer" },
+          "has_next": { "type": "boolean" },
+          "has_prev": { "type": "boolean" }
+        }
+      },
+      "PaginatedCallsResponse": {
+        "type": "object",
+        "required": ["calls", "pagination"],
+        "properties": {
+          "calls": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Call" }
+          },
+          "pagination": { "$ref": "#/components/schemas/PaginationInfo" }
+        }
+      },
+      "VoiceSessionSessionStartedData": {
+        "type": "object",
+        "description": "`data` when `type` is `session_started`.",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string", "description": "Call / session id for this connection." }
+        }
+      },
+      "VoiceSessionResponseAudioData": {
+        "type": "object",
+        "description": "`data` when `type` is `response_audio` (agent TTS chunk, base64 PCM).",
+        "required": ["turn_id", "audio", "is_final"],
+        "properties": {
+          "turn_id": { "type": "string", "description": "Turn or playback context id for this audio stream." },
+          "audio": { "type": "string", "description": "Base64-encoded PCM16 audio." },
+          "is_final": { "type": "boolean", "description": "True when this is the last chunk for this utterance or segment." }
+        }
+      },
+      "VoiceSessionResponseTextData": {
+        "type": "object",
+        "description": "`data` when `type` is `response_text` (agent text).",
+        "required": ["turn_id", "text", "is_final"],
+        "properties": {
+          "turn_id": { "type": "string", "description": "Turn id associated with this assistant message." },
+          "text": { "type": "string", "description": "Assistant text (may repeat or refine while `is_final` is false)." },
+          "is_final": { "type": "boolean", "description": "True when this text is committed for the turn." }
+        }
+      },
+      "VoiceSessionInputAudioTranscriptData": {
+        "type": "object",
+        "description": "`data` when `type` is `input_audio_transcript` (user speech transcript from STT).",
+        "required": ["transcript", "is_final"],
+        "properties": {
+          "transcript": { "type": "string", "description": "Recognized user speech." },
+          "turn_id": { "type": "string", "description": "Turn id when provided." },
+          "is_final": { "type": "boolean", "description": "False for interim hypotheses; true for final transcript." }
+        }
+      },
+      "VoiceSessionSpeechStartedData": {
+        "type": "object",
+        "description": "`data` when `type` is `speech_started`.",
+        "required": ["emulated"],
+        "properties": {
+          "emulated": { "type": "boolean", "description": "True when the start was synthesized for pipeline coordination rather than raw VAD." }
+        }
+      },
+      "VoiceSessionEmptyData": {
+        "type": "object",
+        "description": "Empty object for signaling-only server message types.",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "VoiceSessionInputVariable": {
+        "type": "object",
+        "description": "Argument binding on a client tool call.",
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "description": "e.g. `static`, `resolved`." },
+          "dataType": { "type": "string", "description": "Value shape hint (string, number, boolean, etc.)." },
+          "description": { "type": "string" },
+          "required": { "type": "boolean" },
+          "value": { "description": "JSON value; shape depends on `dataType`." }
+        }
+      },
+      "VoiceSessionClientToolCallData": {
+        "type": "object",
+        "description": "`data` when `type` is `tool_call` (server requests client-side tool execution).",
+        "required": ["toolCallId", "toolName", "arguments"],
+        "properties": {
+          "toolCallId": { "type": "string" },
+          "toolName": { "type": "string" },
+          "arguments": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/VoiceSessionInputVariable" }
+          }
+        }
+      },
+      "VoiceSessionServerMessage": {
+        "description": "Single JSON WebSocket message from server to client on `GET /v1/connection`. Shape is always `{ \"type\": string, \"data\": object }`.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["type", "data"],
+            "properties": {
+              "type": { "type": "string", "enum": ["session_started"] },
+              "data": { "$ref": "#/components/schemas/VoiceSessionSessionStartedData" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "data"],
+            "properties": {
+              "type": { "type": "string", "enum": ["response_audio"] },
+              "data": { "$ref": "#/components/schemas/VoiceSessionResponseAudioData" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "data"],
+            "properties": {
+              "type": { "type": "string", "enum": ["response_text"] },
+              "data": { "$ref": "#/components/schemas/VoiceSessionResponseTextData" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "data"],
+            "properties": {
+              "type": { "type": "string", "enum": ["input_audio_transcript"] },
+              "data": { "$ref": "#/components/schemas/VoiceSessionInputAudioTranscriptData" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "data"],
+            "properties": {
+              "type": { "type": "string", "enum": ["speech_started"] },
+              "data": { "$ref": "#/components/schemas/VoiceSessionSpeechStartedData" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "data"],
+            "properties": {
+              "type": { "type": "string", "enum": ["speech_stopped"] },
+              "data": { "$ref": "#/components/schemas/VoiceSessionEmptyData" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "data"],
+            "properties": {
+              "type": { "type": "string", "enum": ["interruption"] },
+              "data": { "$ref": "#/components/schemas/VoiceSessionEmptyData" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "data"],
+            "properties": {
+              "type": { "type": "string", "enum": ["session_ended"] },
+              "data": { "$ref": "#/components/schemas/VoiceSessionEmptyData" }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "data"],
+            "properties": {
+              "type": { "type": "string", "enum": ["tool_call"] },
+              "data": { "$ref": "#/components/schemas/VoiceSessionClientToolCallData" }
+            }
+          }
+        ]
+      },
+      "VoiceSessionClientInputAudioMessage": {
+        "type": "object",
+        "description": "Client → server: streamed user microphone audio.",
+        "required": ["type", "data"],
+        "properties": {
+          "type": { "type": "string", "enum": ["input_audio"] },
+          "data": {
+            "type": "object",
+            "required": ["audio"],
+            "properties": {
+              "audio": { "type": "string", "description": "Base64-encoded PCM16 chunk." }
+            }
+          }
+        }
+      },
+      "VoiceSessionClientToolCallOutputMessage": {
+        "type": "object",
+        "description": "Client → server: result for a prior `tool_call`.",
+        "required": ["type", "data"],
+        "properties": {
+          "type": { "type": "string", "enum": ["tool_call_output"] },
+          "data": {
+            "type": "object",
+            "required": ["toolCallId", "output"],
+            "properties": {
+              "toolCallId": { "type": "string" },
+              "output": { "type": "string", "description": "Opaque tool result string." }
+            }
+          }
         }
       },
       "ErrorResponse": {

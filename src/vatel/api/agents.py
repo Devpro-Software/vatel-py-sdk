@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from vatel.api.base import BaseAPI
 from vatel.models.rest import (
     Agent,
@@ -121,14 +123,79 @@ class AgentsAPI:
         r.raise_for_status()
         return GraphVersion.model_validate(r.json())
 
-    def dial(self, agent_id: str, number: str) -> DialAgentResponse:
+    def dial(
+        self,
+        agent_id: str,
+        number: Optional[str] = None,
+        *,
+        destination: Optional[str] = None,
+        sip_trunk_id: Optional[str] = None,
+        caller_id: Optional[str] = None,
+        first_message: Optional[str] = None,
+        prompt: Optional[str] = None,
+    ) -> DialAgentResponse:
         client = self._base._get_client()
-        r = client.post(f"/v1/agents/{agent_id}/dial", params={"number": number})
+        r = client.post(
+            f"/v1/agents/{agent_id}/dial",
+            params=self._dial_params(
+                number=number,
+                destination=destination,
+                sip_trunk_id=sip_trunk_id,
+                caller_id=caller_id,
+                first_message=first_message,
+                prompt=prompt,
+            ),
+        )
         r.raise_for_status()
         return DialAgentResponse.model_validate(r.json())
 
-    async def dial_async(self, agent_id: str, number: str) -> DialAgentResponse:
+    async def dial_async(
+        self,
+        agent_id: str,
+        number: Optional[str] = None,
+        *,
+        destination: Optional[str] = None,
+        sip_trunk_id: Optional[str] = None,
+        caller_id: Optional[str] = None,
+        first_message: Optional[str] = None,
+        prompt: Optional[str] = None,
+    ) -> DialAgentResponse:
         client = self._base._get_async_client()
-        r = await client.post(f"/v1/agents/{agent_id}/dial", params={"number": number})
+        r = await client.post(
+            f"/v1/agents/{agent_id}/dial",
+            params=self._dial_params(
+                number=number,
+                destination=destination,
+                sip_trunk_id=sip_trunk_id,
+                caller_id=caller_id,
+                first_message=first_message,
+                prompt=prompt,
+            ),
+        )
         r.raise_for_status()
         return DialAgentResponse.model_validate(r.json())
+
+    @staticmethod
+    def _dial_params(
+        *,
+        number: Optional[str],
+        destination: Optional[str],
+        sip_trunk_id: Optional[str],
+        caller_id: Optional[str],
+        first_message: Optional[str],
+        prompt: Optional[str],
+    ) -> dict[str, str]:
+        params: dict[str, str] = {}
+        if number is not None:
+            params["number"] = number
+        if destination is not None:
+            params["destination"] = destination
+        if sip_trunk_id is not None:
+            params["sipTrunkId"] = sip_trunk_id
+        if caller_id is not None:
+            params["callerId"] = caller_id
+        if first_message is not None:
+            params["firstMessage"] = first_message
+        if prompt is not None:
+            params["prompt"] = prompt
+        return params

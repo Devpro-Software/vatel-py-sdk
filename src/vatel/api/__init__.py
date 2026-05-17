@@ -1,5 +1,6 @@
 from vatel.api.agents import AgentsAPI
 from vatel.api.base import BaseAPI
+from vatel.api.calls import CallsAPI
 from vatel.api.llms import LLMsAPI
 from vatel.api.organization import OrganizationAPI
 from vatel.api.session import SessionAPI
@@ -13,6 +14,7 @@ __all__ = [
     "LLMsAPI",
     "VoicesAPI",
     "AgentsAPI",
+    "CallsAPI",
     "TwilioNumbersAPI",
     "SipTrunksAPI",
     "SessionAPI",
