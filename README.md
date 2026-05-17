@@ -5,7 +5,7 @@ Use the Call Agent Builder REST and WebSocket APIs from Python.
 ## Install
 
 ```bash
-pip install git+https://github.com/Devpro-Software/vatel-py-sdk.git
+pip install "git+https://github.com/Devpro-Software/vatel-py-sdk.git@v0.4.0"
 ```
 
 Requires Python 3.9+.
@@ -40,7 +40,7 @@ Async: `agents = await client.agents.list_async()`.
 
 ### Get a session token
 
-Required for connecting to the WebSocket. Pass the **agent UUID** you want to run the call with.
+Required for connecting to the WebSocket. Pass the **agent UUID** (and optional `version_id`) you want to run the call with; those values are encoded in the JWT returned as `token`.
 
 ```python
 resp = client.session.generate_token(agent_id="agent-uuid-here")
@@ -51,7 +51,7 @@ Async: `resp = await client.session.generate_token_async(agent_id="...")`.
 
 ## Real-time calls (WebSocket)
 
-Connect with a session token. The connection is **async-only**. You receive events (agent audio, transcripts, tool calls, session lifecycle) and send input audio and tool results.
+Connect with the session token from `generate_token`. Agent and graph version are read from the JWT on `GET /v1/connection`; only `token` is sent as a query parameter. The connection is **async-only**. You receive events (agent audio, transcripts, tool calls, session lifecycle) and send input audio and tool results.
 
 ```python
 import asyncio
@@ -62,7 +62,7 @@ async def main():
     client = Client(api_key="your-api-key")
     agent_id = "agent-uuid"
     token = (await client.session.generate_token_async(agent_id=agent_id)).token
-    conn = await client.connect(token=token, agent_id=agent_id)
+    conn = await client.connect(token=token)
 
     async for msg in conn.stream_messages():
         if getattr(msg, "type", None) == "session_started":

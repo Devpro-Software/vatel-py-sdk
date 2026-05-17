@@ -46,16 +46,8 @@ class Client:
     async def connect(
         self,
         token: str,
-        agent_id: str,
         *,
-        version_id: Optional[str] = None,
         url: Optional[str] = None,
         path: Optional[str] = None,
     ) -> Connection:
-        return await ws_connect(
-            token=token,
-            agent_id=agent_id,
-            version_id=version_id,
-            url=url,
-            path=path,
-        )
+        return await ws_connect(token=token, url=url, path=path)
